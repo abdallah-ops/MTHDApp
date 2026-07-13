@@ -40,6 +40,7 @@
         <aside class="sidebar" aria-label="Primary">
           <nav class="nav-list">
             <button class="nav-item is-active" data-view="overview" type="button">Overview</button>
+            <button class="nav-item" data-view="profiles" type="button">Profiles</button>
             <button class="nav-item" data-view="peptides" type="button">Peptides</button>
             <button class="nav-item" data-view="timeline" type="button">Timeline</button>
             <button class="nav-item" data-view="weight" type="button">Weight</button>
@@ -47,26 +48,6 @@
             <button class="nav-item" data-view="findings" type="button">Findings</button>
             <button class="nav-item" data-view="settings" type="button">Settings</button>
           </nav>
-
-          <section class="side-panel">
-            <h2>Family Profiles</h2>
-            <form id="profileForm" class="stacked-form">
-              <label>
-                <span>Name</span>
-                <input id="profileName" type="text" autocomplete="name" required />
-              </label>
-              <label>
-                <span>Label</span>
-                <input id="profileLabel" type="text" placeholder="Self, partner, parent..." />
-              </label>
-              <label>
-                <span>Password</span>
-                <input id="profilePassword" type="password" autocomplete="new-password" required />
-              </label>
-              <button type="submit">Add profile</button>
-            </form>
-            <div id="profileList" class="profile-list"></div>
-          </section>
         </aside>
 
         <main class="content">
@@ -83,6 +64,46 @@
                 <button type="submit">Unlock profile</button>
               </form>
               <p class="fine-print">This is a family privacy screen, not medical-grade encryption.</p>
+            </div>
+          </section>
+
+          <section class="view" id="profilesView" data-view-panel="profiles">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Family access</p>
+                <h1>Profiles</h1>
+              </div>
+              <div class="privacy-chip">Local privacy</div>
+            </div>
+
+            <div class="split-layout">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Add New Profile</h2>
+                </div>
+                <form id="profileForm" class="grid-form">
+                  <label>
+                    <span>Name</span>
+                    <input id="profileName" type="text" autocomplete="name" required />
+                  </label>
+                  <label>
+                    <span>Label</span>
+                    <input id="profileLabel" type="text" placeholder="Self, partner, parent..." />
+                  </label>
+                  <label class="wide">
+                    <span>Password</span>
+                    <input id="profilePassword" type="password" autocomplete="new-password" required />
+                  </label>
+                  <button type="submit">Add profile</button>
+                </form>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Family Profiles</h2>
+                </div>
+                <div id="profileList" class="profile-list"></div>
+              </section>
             </div>
           </section>
 
@@ -544,6 +565,21 @@
             </div>
           </section>
         </main>
+      </div>
+    </div>
+
+    <div class="install-prompt" id="installPrompt" hidden>
+      <div class="install-card">
+        <button class="install-close" id="installPromptClose" type="button" aria-label="Close install prompt">&times;</button>
+        <p class="eyebrow">Install MTHD</p>
+        <h2>Add to Home Screen</h2>
+        <p class="quiet-copy" id="installPromptCopy">Install MTHD for a standalone app experience.</p>
+        <div class="install-steps" id="iosInstallSteps" hidden>
+          <span>1. Tap Share in Safari</span>
+          <span>2. Choose Add to Home Screen</span>
+          <span>3. Tap Add</span>
+        </div>
+        <button id="installPromptAction" type="button">Install</button>
       </div>
     </div>
 

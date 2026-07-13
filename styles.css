@@ -978,7 +978,7 @@ canvas {
 
 h1 {
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .privacy-chip,
@@ -1002,7 +1002,7 @@ h1 {
 .stat-tile strong {
   font-size: 1.55rem;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .panel-heading {
@@ -1014,7 +1014,7 @@ h1 {
 .side-panel h2,
 .item-header h3 {
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .item-header p,
@@ -1085,4 +1085,71 @@ canvas {
 
 .lock-panel h1 {
   margin-bottom: 8px;
+}
+
+.install-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: end center;
+  padding:
+    20px
+    calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom))
+    calc(20px + env(safe-area-inset-left));
+  background: rgba(13, 13, 12, 0.46);
+}
+
+.install-prompt[hidden] {
+  display: none;
+}
+
+.install-card {
+  position: relative;
+  width: min(440px, 100%);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 28px;
+}
+
+.install-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.install-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-color: var(--line);
+  color: var(--muted);
+  background: transparent;
+  font-size: 18px;
+}
+
+.install-close:hover {
+  color: var(--surface-soft);
+  background: var(--ink);
+}
+
+.install-steps {
+  display: grid;
+  gap: 1px;
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.install-steps span {
+  padding: 12px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family: var(--sans);
+  letter-spacing: 0;
 }

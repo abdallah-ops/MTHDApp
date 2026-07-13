@@ -1,4 +1,4 @@
-const CACHE_VERSION = "mthd-cache-v2";
+const CACHE_VERSION = "mthd-cache-v3";
 const APP_SHELL = [
   "/",
   "/index.html",

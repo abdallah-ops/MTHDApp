@@ -1,5 +1,7 @@
 const STORAGE_KEY = "mthd:v1";
 const LEGACY_STORAGE_KEY = "peptoot:v1";
+const ADD_PROFILE_VALUE = "__add_profile__";
+const INSTALL_PROMPT_DISMISSED_KEY = "mthd:installPromptDismissed";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const WEEK_HOURS = 7 * 24;
@@ -103,6 +105,7 @@ let state = loadState();
 let currentView = "overview";
 let doseFilter = "all";
 let reminderTimers = [];
+let deferredInstallPrompt = null;
 const unlockedProfiles = new Set();
 
 const $ = (selector) => document.querySelector(selector);
@@ -111,7 +114,9 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 document.addEventListener("DOMContentLoaded", () => {
   setDefaultDates();
   bindEvents();
+  bindInstallPrompt();
   registerServiceWorker();
+  maybeShowInstallPrompt();
   activateViewFromHash();
   render();
   window.addEventListener("resize", debounce(drawCharts, 120));
@@ -144,6 +149,13 @@ function bindEvents() {
   window.addEventListener("hashchange", activateViewFromHash);
 
   $("#profileSelect").addEventListener("change", (event) => {
+    if (event.target.value === ADD_PROFILE_VALUE) {
+      showView("profiles");
+      renderProfiles();
+      $("#profileName").focus();
+      return;
+    }
+
     state.activeProfileId = event.target.value;
     saveState();
     render();
@@ -213,6 +225,68 @@ function registerServiceWorker() {
   });
 }
 
+function bindInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    maybeShowInstallPrompt();
+  });
+
+  $("#installPromptClose").addEventListener("click", dismissInstallPrompt);
+  $("#installPromptAction").addEventListener("click", handleInstallPromptAction);
+}
+
+function maybeShowInstallPrompt() {
+  if (isStandaloneApp() || localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === "true") return;
+
+  const shouldPrompt = isIosDevice() || Boolean(deferredInstallPrompt);
+  if (!shouldPrompt) return;
+
+  window.setTimeout(showInstallPrompt, 900);
+}
+
+function showInstallPrompt() {
+  if (isStandaloneApp() || localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === "true") return;
+
+  const prompt = $("#installPrompt");
+  const steps = $("#iosInstallSteps");
+  const copy = $("#installPromptCopy");
+  const action = $("#installPromptAction");
+  const ios = isIosDevice();
+
+  steps.hidden = !ios;
+  copy.textContent = ios
+    ? "iPhone does not allow websites to open the install sheet automatically. These are the quickest steps."
+    : "Install MTHD for a standalone app experience.";
+  action.textContent = ios ? "Got it" : "Install";
+  prompt.hidden = false;
+}
+
+function dismissInstallPrompt() {
+  localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, "true");
+  $("#installPrompt").hidden = true;
+}
+
+async function handleInstallPromptAction() {
+  if (isIosDevice() || !deferredInstallPrompt) {
+    dismissInstallPrompt();
+    return;
+  }
+
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice.catch(() => null);
+  deferredInstallPrompt = null;
+  dismissInstallPrompt();
+}
+
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -225,20 +299,10 @@ function loadState() {
 }
 
 function createInitialState() {
-  const profile = {
-    id: createId(),
-    name: "Me",
-    label: "Self",
-    passwordHash: "",
-    passwordSalt: "",
-    passwordUpdatedAt: null,
-    createdAt: new Date().toISOString(),
-  };
-
   return {
     version: 1,
-    activeProfileId: profile.id,
-    profiles: [profile],
+    activeProfileId: "",
+    profiles: [],
     peptides: [],
     doses: [],
     weights: [],
@@ -264,15 +328,23 @@ function normalizeState(value) {
     },
   };
 
-  if (!next.profiles.length) {
-    next.profiles = fallback.profiles;
-  }
+  next.profiles = removeLegacyDefaultProfiles(next);
 
   if (!next.profiles.some((profile) => profile.id === next.activeProfileId)) {
-    next.activeProfileId = next.profiles[0].id;
+    next.activeProfileId = next.profiles[0]?.id || "";
   }
 
   return next;
+}
+
+function removeLegacyDefaultProfiles(next) {
+  return next.profiles.filter((profile) => {
+    const isLegacyMe = profile.name === "Me" && (profile.label === "Self" || !profile.label) && !profile.passwordHash;
+    const hasRecords = [...next.peptides, ...next.doses, ...next.weights, ...next.findings].some(
+      (record) => record.profileId === profile.id,
+    );
+    return !(isLegacyMe && !hasRecords);
+  });
 }
 
 function normalizeProfile(profile) {
@@ -325,10 +397,11 @@ function saveState() {
 }
 
 function activeProfile() {
-  return state.profiles.find((profile) => profile.id === state.activeProfileId) || state.profiles[0];
+  return state.profiles.find((profile) => profile.id === state.activeProfileId) || state.profiles[0] || null;
 }
 
 function profileRecords(collection) {
+  if (!activeProfile()) return [];
   return collection.filter((record) => record.profileId === state.activeProfileId);
 }
 
@@ -390,6 +463,13 @@ function render() {
   renderProfilePasswordStatus();
   renderLockState();
 
+  if (!activeProfile()) {
+    showView("profiles");
+    renderNoProfileState();
+    updateNotificationButton();
+    return;
+  }
+
   if (isActiveProfileLocked()) {
     clearSensitiveViews();
     updateNotificationButton();
@@ -414,27 +494,31 @@ function render() {
 
 function renderProfiles() {
   const select = $("#profileSelect");
-  select.innerHTML = state.profiles
+  const profileOptions = state.profiles
     .map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`)
     .join("");
-  select.value = state.activeProfileId;
+  const emptyOption = state.profiles.length ? "" : '<option value="">No profile selected</option>';
+  select.innerHTML = `${emptyOption}${profileOptions}<option value="${ADD_PROFILE_VALUE}">Add new profile...</option>`;
+  select.value = state.activeProfileId || "";
 
-  $("#profileList").innerHTML = state.profiles
-    .map((profile) => {
-      const active = profile.id === state.activeProfileId;
-      return `
-        <article class="profile-pill">
-          <div>
-            <strong>${escapeHtml(profile.name)}</strong>
-            <span>${escapeHtml(profile.label || "Family")} · ${profilePrivacyLabel(profile)}</span>
-          </div>
-          <button class="${active ? "" : "secondary"}" data-profile-id="${escapeHtml(profile.id)}" type="button">
-            ${active ? "Active" : "Switch"}
-          </button>
-        </article>
-      `;
-    })
-    .join("");
+  $("#profileList").innerHTML = state.profiles.length
+    ? state.profiles
+        .map((profile) => {
+          const active = profile.id === state.activeProfileId;
+          return `
+            <article class="profile-pill">
+              <div>
+                <strong>${escapeHtml(profile.name)}</strong>
+                <span>${escapeHtml(profile.label || "Family")} · ${profilePrivacyLabel(profile)}</span>
+              </div>
+              <button class="${active ? "" : "secondary"}" data-profile-id="${escapeHtml(profile.id)}" type="button">
+                ${active ? "Active" : "Switch"}
+              </button>
+            </article>
+          `;
+        })
+        .join("")
+    : emptyState("Add a profile to start tracking.");
 
   $$("#profileList [data-profile-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -454,6 +538,12 @@ function renderLockState() {
   $$(".view").forEach((panel) => {
     panel.hidden = locked;
   });
+}
+
+function renderNoProfileState() {
+  $("#profileLockView").hidden = true;
+  $("#lockActiveProfileButton").hidden = true;
+  drawCharts();
 }
 
 function renderProfilePasswordStatus() {
