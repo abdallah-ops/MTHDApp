@@ -1,0 +1,12 @@
+{
+  "name": "mthd",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js",
+    "verify:pwa": "node scripts/verify-pwa.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.8.0"
+  }
+}

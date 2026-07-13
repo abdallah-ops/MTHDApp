@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.vercel/
+.env
+.env.local
+.DS_Store
+assets/peptoot-logo.jpg

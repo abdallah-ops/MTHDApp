@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MTHD</title>
+    <meta name="theme-color" content="#0d0d0c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MTHD" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/assets/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#overview" aria-label="MTHD dashboard">
+          <span>
+            <strong>MTHD</strong>
+            <small>Private research log</small>
+          </span>
+        </a>
+
+        <div class="topbar-actions">
+          <label class="select-wrap">
+            <span>Profile</span>
+            <select id="profileSelect" aria-label="Active profile"></select>
+          </label>
+          <button class="secondary" id="notifyButton" type="button">Enable reminders</button>
+          <button class="secondary" id="lockActiveProfileButton" type="button">Lock profile</button>
+          <button class="secondary" id="exportButton" type="button">Export</button>
+          <button class="secondary" id="importButton" type="button">Import</button>
+          <input id="importFile" type="file" accept="application/json" hidden />
+        </div>
+      </header>
+
+      <div class="app-layout">
+        <aside class="sidebar" aria-label="Primary">
+          <nav class="nav-list">
+            <button class="nav-item is-active" data-view="overview" type="button">Overview</button>
+            <button class="nav-item" data-view="peptides" type="button">Peptides</button>
+            <button class="nav-item" data-view="timeline" type="button">Timeline</button>
+            <button class="nav-item" data-view="weight" type="button">Weight</button>
+            <button class="nav-item" data-view="projections" type="button">Projections</button>
+            <button class="nav-item" data-view="findings" type="button">Findings</button>
+            <button class="nav-item" data-view="settings" type="button">Settings</button>
+          </nav>
+
+          <section class="side-panel">
+            <h2>Family Profiles</h2>
+            <form id="profileForm" class="stacked-form">
+              <label>
+                <span>Name</span>
+                <input id="profileName" type="text" autocomplete="name" required />
+              </label>
+              <label>
+                <span>Label</span>
+                <input id="profileLabel" type="text" placeholder="Self, partner, parent..." />
+              </label>
+              <label>
+                <span>Password</span>
+                <input id="profilePassword" type="password" autocomplete="new-password" required />
+              </label>
+              <button type="submit">Add profile</button>
+            </form>
+            <div id="profileList" class="profile-list"></div>
+          </section>
+        </aside>
+
+        <main class="content">
+          <section class="profile-lock" id="profileLockView" hidden>
+            <div class="lock-panel">
+              <p class="eyebrow">Profile locked</p>
+              <h1 id="lockProfileName">Private profile</h1>
+              <p class="quiet-copy">Enter this profile password to show charts, doses, weight logs, and findings.</p>
+              <form id="unlockForm" class="stacked-form">
+                <label>
+                  <span>Password</span>
+                  <input id="unlockPassword" type="password" autocomplete="current-password" required />
+                </label>
+                <button type="submit">Unlock profile</button>
+              </form>
+              <p class="fine-print">This is a family privacy screen, not medical-grade encryption.</p>
+            </div>
+          </section>
+
+          <section class="view is-visible" id="overviewView" data-view-panel="overview">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow" id="todayLabel"></p>
+                <h1>Overview</h1>
+              </div>
+              <div class="privacy-chip">Local data</div>
+            </div>
+
+            <section class="stat-grid" aria-label="Profile summary">
+              <article class="stat-tile">
+                <span>Active Peptides</span>
+                <strong id="statPeptides">0</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Next Jab</span>
+                <strong id="statNextDose">None</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Estimated Active</span>
+                <strong id="statActiveAmount">0 mg</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Weight Trend</span>
+                <strong id="statWeightTrend">No data</strong>
+              </article>
+            </section>
+
+            <div class="dashboard-grid">
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <h2>Accumulation Estimate</h2>
+                  <span id="activeChartRange"></span>
+                </div>
+                <canvas id="accumulationChart" height="260"></canvas>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Upcoming</h2>
+                  <button class="text-button" data-view-jump="timeline" type="button">Open timeline</button>
+                </div>
+                <div id="upcomingList" class="event-list"></div>
+              </section>
+
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <h2>Weight</h2>
+                  <button class="text-button" data-view-jump="weight" type="button">Add weight</button>
+                </div>
+                <canvas id="weightChart" height="220"></canvas>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Recent Findings</h2>
+                  <button class="text-button" data-view-jump="findings" type="button">Add note</button>
+                </div>
+                <div id="recentFindings" class="note-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="peptidesView" data-view-panel="peptides">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Vials and reconstitution</p>
+                <h1>Peptides</h1>
+              </div>
+            </div>
+
+            <div class="split-layout">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Add Peptide</h2>
+                </div>
+                <form id="peptideForm" class="grid-form">
+                  <label class="wide">
+                    <span>Compound preset</span>
+                    <select id="peptidePreset">
+                      <option value="">Custom peptide</option>
+                    </select>
+                  </label>
+                  <label class="wide">
+                    <span>Name</span>
+                    <input id="peptideName" type="text" required placeholder="Example: Tirzepatide" />
+                  </label>
+                  <label>
+                    <span>Vial amount</span>
+                    <div class="input-suffix">
+                      <input id="vialMg" type="number" min="0" step="0.001" required />
+                      <span>mg</span>
+                    </div>
+                  </label>
+                  <label>
+                    <span>Diluent</span>
+                    <div class="input-suffix">
+                      <input id="diluentMl" type="number" min="0" step="0.01" required />
+                      <span>mL</span>
+                    </div>
+                  </label>
+                  <label>
+                    <span>Half-life</span>
+                    <div class="input-suffix">
+                      <input id="halfLifeHours" type="number" min="0" step="0.1" />
+                      <span>hours</span>
+                    </div>
+                  </label>
+                  <output id="presetPreview" class="calculation-preview wide">Choose a preset to auto-fill the half-life notes.</output>
+                  <label>
+                    <span>Reconstituted</span>
+                    <input id="reconstitutedAt" type="date" />
+                  </label>
+                  <label>
+                    <span>Discard by</span>
+                    <input id="discardAt" type="date" />
+                  </label>
+                  <label>
+                    <span>Lot</span>
+                    <input id="lotNumber" type="text" />
+                  </label>
+                  <label class="wide">
+                    <span>Storage</span>
+                    <input id="storageNotes" type="text" placeholder="Fridge, box location, etc." />
+                  </label>
+                  <label class="wide">
+                    <span>Notes</span>
+                    <textarea id="peptideNotes" rows="3"></textarea>
+                  </label>
+                  <output id="concentrationPreview" class="calculation-preview wide">Enter vial amount and diluent.</output>
+                  <button type="submit">Save peptide</button>
+                </form>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Saved Peptides</h2>
+                </div>
+                <div id="peptideList" class="peptide-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="timelineView" data-view-panel="timeline">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Planned, taken, skipped</p>
+                <h1>Timeline</h1>
+              </div>
+            </div>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Add Jab</h2>
+              </div>
+              <form id="doseForm" class="grid-form">
+                <label>
+                  <span>Peptide</span>
+                  <select id="dosePeptide" required></select>
+                </label>
+                <label>
+                  <span>Time</span>
+                  <input id="doseAt" type="datetime-local" required />
+                </label>
+                <label>
+                  <span>Dose</span>
+                  <div class="dose-row">
+                    <input id="doseAmount" type="number" min="0" step="0.001" required />
+                    <select id="doseUnit" aria-label="Dose unit">
+                      <option value="mg">mg</option>
+                      <option value="mcg">mcg</option>
+                    </select>
+                  </div>
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select id="doseStatus">
+                    <option value="planned">Planned</option>
+                    <option value="taken">Taken</option>
+                    <option value="skipped">Skipped</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Site</span>
+                  <select id="doseSite">
+                    <option value="">Not recorded</option>
+                    <option>Abdomen left</option>
+                    <option>Abdomen right</option>
+                    <option>Thigh left</option>
+                    <option>Thigh right</option>
+                    <option>Arm left</option>
+                    <option>Arm right</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  <span>Note</span>
+                  <textarea id="doseNote" rows="3"></textarea>
+                </label>
+                <output id="dosePreview" class="calculation-preview wide">Select a peptide to calculate volume.</output>
+                <button type="submit">Save jab</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Dose History</h2>
+                <div class="segmented-control" aria-label="Dose filter">
+                  <button class="is-selected" data-dose-filter="all" type="button">All</button>
+                  <button data-dose-filter="planned" type="button">Planned</button>
+                  <button data-dose-filter="taken" type="button">Taken</button>
+                  <button data-dose-filter="skipped" type="button">Skipped</button>
+                </div>
+              </div>
+              <div id="doseList" class="timeline-list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="weightView" data-view-panel="weight">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Body metrics</p>
+                <h1>Weight</h1>
+              </div>
+            </div>
+
+            <div class="split-layout">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Add Weight</h2>
+                </div>
+                <form id="weightForm" class="grid-form">
+                  <label>
+                    <span>Date</span>
+                    <input id="weightDate" type="date" required />
+                  </label>
+                  <label>
+                    <span>Weight</span>
+                    <div class="dose-row">
+                      <input id="weightValue" type="number" min="0" step="0.1" required />
+                      <select id="weightUnit" aria-label="Weight unit">
+                        <option value="lb">lb</option>
+                        <option value="kg">kg</option>
+                      </select>
+                    </div>
+                  </label>
+                  <label class="wide">
+                    <span>Note</span>
+                    <textarea id="weightNote" rows="3"></textarea>
+                  </label>
+                  <button type="submit">Save weight</button>
+                </form>
+              </section>
+
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <h2>Trend</h2>
+                  <span id="weightRange"></span>
+                </div>
+                <canvas id="weightDetailChart" height="280"></canvas>
+              </section>
+            </div>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Weight Log</h2>
+              </div>
+              <div id="weightList" class="weight-list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="projectionsView" data-view-panel="projections">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Reta and tirz weight view</p>
+                <h1>Projections</h1>
+              </div>
+              <div class="privacy-chip">Trial-average reference</div>
+            </div>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Projection Setup</h2>
+                <button class="text-button" data-view-jump="weight" type="button">Open weight log</button>
+              </div>
+              <form class="grid-form" id="projectionForm">
+                <label>
+                  <span>Peptide</span>
+                  <select id="projectionPeptide"></select>
+                </label>
+                <label>
+                  <span>Model</span>
+                  <select id="projectionModel"></select>
+                </label>
+              </form>
+            </section>
+
+            <section class="stat-grid projection-stats" aria-label="Projection summary">
+              <article class="stat-tile">
+                <span>Baseline</span>
+                <strong id="projectionBaseline">No data</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Current</span>
+                <strong id="projectionCurrent">No data</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Trial Target</span>
+                <strong id="projectionTarget">No model</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Exposure</span>
+                <strong id="projectionExposure">No dose</strong>
+              </article>
+            </section>
+
+            <div class="dashboard-grid">
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <h2>Actual vs Projection</h2>
+                  <span id="projectionChartRange"></span>
+                </div>
+                <canvas id="projectionChart" height="300"></canvas>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Model Notes</h2>
+                </div>
+                <div id="projectionNotes" class="note-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="findingsView" data-view-panel="findings">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Observations and notes</p>
+                <h1>Findings</h1>
+              </div>
+            </div>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Add Finding</h2>
+              </div>
+              <form id="findingForm" class="grid-form">
+                <label>
+                  <span>Date</span>
+                  <input id="findingAt" type="datetime-local" required />
+                </label>
+                <label>
+                  <span>Peptide</span>
+                  <select id="findingPeptide"></select>
+                </label>
+                <label>
+                  <span>Category</span>
+                  <select id="findingCategory">
+                    <option>Side effect</option>
+                    <option>Benefit</option>
+                    <option>Appetite</option>
+                    <option>Sleep</option>
+                    <option>Mood</option>
+                    <option>Lab</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Intensity</span>
+                  <input id="findingIntensity" type="range" min="0" max="5" value="0" />
+                </label>
+                <label class="wide">
+                  <span>Note</span>
+                  <textarea id="findingNote" rows="4" required></textarea>
+                </label>
+                <button type="submit">Save finding</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Finding Log</h2>
+              </div>
+              <div id="findingList" class="finding-list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="settingsView" data-view-panel="settings">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Privacy and data</p>
+                <h1>Settings</h1>
+              </div>
+            </div>
+
+            <div class="settings-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Data</h2>
+                </div>
+                <div class="button-row">
+                  <button id="settingsExportButton" type="button">Export JSON</button>
+                  <button class="secondary" id="settingsImportButton" type="button">Import JSON</button>
+                </div>
+                <p class="quiet-copy">Stored in this browser only. Export a backup before changing devices.</p>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>MongoDB Vault</h2>
+                </div>
+                <form id="cloudSyncForm" class="stacked-form">
+                  <label>
+                    <span>Vault ID</span>
+                    <input id="cloudVaultId" type="text" autocomplete="off" placeholder="family-name-or-code" />
+                  </label>
+                  <label>
+                    <span>Vault secret</span>
+                    <input id="cloudVaultSecret" type="password" autocomplete="current-password" />
+                  </label>
+                  <div class="button-row">
+                    <button id="cloudPushButton" type="button">Push encrypted backup</button>
+                    <button class="secondary" id="cloudPullButton" type="button">Pull backup</button>
+                  </div>
+                </form>
+                <p class="quiet-copy" id="cloudSyncStatus">MongoDB sync requires Vercel environment variables.</p>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Estimate Boundaries</h2>
+                </div>
+                <p class="quiet-copy">Half-life, accumulation, and weight projections use values you enter plus published or reported trial averages. MTHD records and estimates; it does not recommend what to take.</p>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Profile Password</h2>
+                </div>
+                <form id="profilePasswordForm" class="stacked-form">
+                  <label>
+                    <span>New password</span>
+                    <input id="activeProfilePassword" type="password" autocomplete="new-password" required />
+                  </label>
+                  <button type="submit">Save password</button>
+                </form>
+                <p class="quiet-copy" id="profilePasswordStatus">Protects this profile with a local UI lock.</p>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Reset</h2>
+                </div>
+                <button class="danger" id="clearDataButton" type="button">Clear local data</button>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
