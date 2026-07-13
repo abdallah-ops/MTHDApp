@@ -1,4 +1,4 @@
-const CACHE_VERSION = "mthd-cache-v3";
+const CACHE_VERSION = "mthd-cache-v4";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -41,6 +41,44 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(cacheFirst(event.request));
 });
+
+self.addEventListener("push", (event) => {
+  const payload = readPushPayload(event);
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "MTHD reminder", {
+      body: payload.body || "You have a planned jab reminder.",
+      data: {
+        url: payload.url || "/timeline",
+      },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      const matchingClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
+      if (matchingClient) {
+        return matchingClient.focus().then(() => matchingClient.navigate(url));
+      }
+
+      return self.clients.openWindow(url);
+    }),
+  );
+});
+
+function readPushPayload(event) {
+  try {
+    return event.data?.json() || {};
+  } catch {
+    return {
+      body: event.data?.text() || "",
+    };
+  }
+}
 
 async function networkFirstNavigation(request) {
   const cache = await caches.open(CACHE_VERSION);

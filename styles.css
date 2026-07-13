@@ -516,6 +516,7 @@ canvas {
 .event-list,
 .note-list,
 .timeline-list,
+.accumulation-list,
 .weight-list,
 .finding-list {
   display: grid;

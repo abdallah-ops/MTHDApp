@@ -43,6 +43,7 @@
             <button class="nav-item" data-view="profiles" type="button">Profiles</button>
             <button class="nav-item" data-view="peptides" type="button">Peptides</button>
             <button class="nav-item" data-view="timeline" type="button">Timeline</button>
+            <button class="nav-item" data-view="accumulation" type="button">Accumulation</button>
             <button class="nav-item" data-view="weight" type="button">Weight</button>
             <button class="nav-item" data-view="projections" type="button">Projections</button>
             <button class="nav-item" data-view="findings" type="button">Findings</button>
@@ -323,6 +324,53 @@
               </div>
               <div id="doseList" class="timeline-list"></div>
             </section>
+          </section>
+
+          <section class="view" id="accumulationView" data-view-panel="accumulation">
+            <div class="view-header">
+              <div>
+                <p class="eyebrow">Half-life based estimate</p>
+                <h1>Dose Accumulation</h1>
+              </div>
+              <div class="privacy-chip">Estimated active amount</div>
+            </div>
+
+            <section class="stat-grid" aria-label="Accumulation summary">
+              <article class="stat-tile">
+                <span>Active Now</span>
+                <strong id="accumulationTotal">0 mg</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Tracked Peptides</span>
+                <strong id="accumulationSupported">0</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Next Jab</span>
+                <strong id="accumulationNext">None</strong>
+              </article>
+              <article class="stat-tile">
+                <span>Highest Active</span>
+                <strong id="accumulationLead">No data</strong>
+              </article>
+            </section>
+
+            <div class="dashboard-grid">
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <h2>Accumulation Curve</h2>
+                  <span id="accumulationDetailRange"></span>
+                </div>
+                <canvas id="accumulationDetailChart" height="300"></canvas>
+              </section>
+
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Breakdown</h2>
+                  <button class="text-button" data-view-jump="timeline" type="button">Log jab</button>
+                </div>
+                <div id="accumulationList" class="accumulation-list"></div>
+              </section>
+            </div>
           </section>
 
           <section class="view" id="weightView" data-view-panel="weight">

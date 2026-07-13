@@ -106,6 +106,7 @@ let currentView = "overview";
 let doseFilter = "all";
 let reminderTimers = [];
 let deferredInstallPrompt = null;
+let serviceWorkerRegistrationPromise = null;
 const unlockedProfiles = new Set();
 
 const $ = (selector) => document.querySelector(selector);
@@ -174,11 +175,11 @@ function bindEvents() {
   $("#projectionPeptide").addEventListener("change", () => {
     renderProjectionModelOptions();
     renderProjection();
-    requestAnimationFrame(drawCharts);
+    scheduleChartDraw();
   });
   $("#projectionModel").addEventListener("change", () => {
     renderProjection();
-    requestAnimationFrame(drawCharts);
+    scheduleChartDraw();
   });
 
   ["#vialMg", "#diluentMl"].forEach((selector) => {
@@ -219,10 +220,18 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
 
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
-      // PWA install still works as a website if registration is blocked.
-    });
+    ensureServiceWorkerRegistration();
   });
+}
+
+function ensureServiceWorkerRegistration() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return Promise.resolve(null);
+
+  if (!serviceWorkerRegistrationPromise) {
+    serviceWorkerRegistrationPromise = navigator.serviceWorker.register("/sw.js").catch(() => null);
+  }
+
+  return serviceWorkerRegistrationPromise;
 }
 
 function bindInstallPrompt() {
@@ -429,7 +438,13 @@ function showView(view) {
   if (`${location.pathname}${location.hash}` !== nextUrl) {
     history.replaceState(null, "", nextUrl);
   }
-  requestAnimationFrame(drawCharts);
+  scheduleChartDraw();
+}
+
+function scheduleChartDraw() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(drawCharts);
+  });
 }
 
 function activateViewFromHash() {
@@ -485,11 +500,12 @@ function render() {
   renderOverview();
   renderPeptides();
   renderDoseList();
+  renderAccumulation();
   renderWeights();
   renderProjection();
   renderFindings();
   updateNotificationButton();
-  requestAnimationFrame(drawCharts);
+  scheduleChartDraw();
 }
 
 function renderProfiles() {
@@ -685,6 +701,44 @@ function renderDoseList() {
     : emptyState("No dose events in this view.");
 }
 
+function renderAccumulation() {
+  const peptides = profileRecords(state.peptides);
+  const takenDoses = profileRecords(state.doses).filter((dose) => dose.status === "taken");
+  const now = new Date();
+  const rows = peptides
+    .filter((peptide) => peptide.halfLifeHours && takenDoses.some((dose) => dose.peptideId === peptide.id))
+    .map((peptide) => {
+      const peptideDoses = takenDoses
+        .filter((dose) => dose.peptideId === peptide.id)
+        .sort((a, b) => new Date(a.at) - new Date(b.at));
+      const activeNow = calculatePeptideActiveAmount(peptide.id, now);
+      return {
+        activeIn24h: calculatePeptideActiveAmount(peptide.id, new Date(now.getTime() + DAY_MS)),
+        activeIn7d: calculatePeptideActiveAmount(peptide.id, new Date(now.getTime() + 7 * DAY_MS)),
+        activeNow,
+        doseCount: peptideDoses.length,
+        lastDose: peptideDoses.at(-1),
+        peptide,
+        weeklyFactor: weeklyAccumulationFactor(peptide),
+      };
+    })
+    .sort((a, b) => b.activeNow - a.activeNow);
+
+  const nextDose = profileRecords(state.doses)
+    .filter((dose) => dose.status === "planned")
+    .sort((a, b) => new Date(a.at) - new Date(b.at))[0];
+
+  $("#accumulationTotal").textContent = formatDose(calculateProfileActiveAmount(now));
+  $("#accumulationSupported").textContent = String(rows.length);
+  $("#accumulationNext").textContent = nextDose ? relativeDateLabel(nextDose.at) : "None";
+  $("#accumulationLead").textContent = rows[0]
+    ? `${rows[0].peptide.name} · ${formatDose(rows[0].activeNow)}`
+    : "No data";
+  $("#accumulationList").innerHTML = rows.length
+    ? rows.map(accumulationCard).join("")
+    : emptyState("Log taken doses for peptides with half-life values to build an accumulation view.");
+}
+
 function renderWeights() {
   const weights = profileRecords(state.weights).sort((a, b) => parseDateValue(b.date) - parseDateValue(a.date));
   $("#weightList").innerHTML = weights.length
@@ -711,7 +765,7 @@ function renderProjection() {
     $("#projectionTarget").textContent = "No model";
     $("#projectionExposure").textContent = "No dose";
     $("#projectionChartRange").textContent = "";
-    $("#projectionNotes").innerHTML = emptyState("Add retatrutide or tirzepatide, then log weight and taken doses.");
+    $("#projectionNotes").innerHTML = emptyState(projectionReadinessMessage());
     return;
   }
 
@@ -1197,6 +1251,38 @@ function doseCard(dose) {
   `;
 }
 
+function accumulationCard(row) {
+  const { activeIn24h, activeIn7d, activeNow, doseCount, lastDose, peptide, weeklyFactor } = row;
+
+  return `
+    <article class="event-card">
+      <div class="item-header">
+        <div>
+          <h3>${escapeHtml(peptide.name)}</h3>
+          <p>Half-life ${escapeHtml(getHalfLifeLabel(peptide))} · ${doseCount} taken ${doseCount === 1 ? "dose" : "doses"}</p>
+        </div>
+        <span class="privacy-chip">${formatDose(activeNow)}</span>
+      </div>
+      <div class="metric-row">
+        <div class="metric">
+          <span>Now</span>
+          <strong>${formatDose(activeNow)}</strong>
+        </div>
+        <div class="metric">
+          <span>24h Est.</span>
+          <strong>${formatDose(activeIn24h)}</strong>
+        </div>
+        <div class="metric">
+          <span>7d Est.</span>
+          <strong>${formatDose(activeIn7d)}</strong>
+        </div>
+      </div>
+      <p class="meta-line">Last taken: ${lastDose ? `${formatDateTime(lastDose.at)} · ${formatDose(lastDose.doseMg)}` : "No taken dose"}</p>
+      <p class="meta-line">Weekly steady-state factor: ${weeklyFactor ? `${formatNumber(weeklyFactor, 2)}x` : "not available"}.</p>
+    </article>
+  `;
+}
+
 function upcomingDoseCards(doses) {
   const planned = doses
     .filter((dose) => dose.status === "planned")
@@ -1326,6 +1412,11 @@ function calculatePeptideActiveAmount(peptideId, at) {
     }, 0);
 }
 
+function weeklyAccumulationFactor(peptide) {
+  if (!peptide?.halfLifeHours) return null;
+  return 1 / (1 - Math.pow(0.5, WEEK_HOURS / peptide.halfLifeHours));
+}
+
 function activeSeries() {
   const doses = profileRecords(state.doses).filter((dose) => dose.status === "taken");
   const peptidesById = new Map(profileRecords(state.peptides).map((peptide) => [peptide.id, peptide]));
@@ -1370,17 +1461,19 @@ function getProjectionContext() {
   const model = PROJECTION_MODELS[$("#projectionModel").value];
   const weights = profileRecords(state.weights).sort((a, b) => parseDateValue(a.date) - parseDateValue(b.date));
 
-  if (!peptide || !model || !weights.length) return null;
+  if (!peptide || !model || model.compoundKey !== getProjectionCompoundKey(peptide) || !weights.length) return null;
 
   const doses = profileRecords(state.doses)
     .filter((dose) => dose.peptideId === peptide.id && dose.status === "taken")
     .sort((a, b) => new Date(a.at) - new Date(b.at));
   const firstDose = doses[0] || null;
   const currentDose = doses.at(-1) || null;
+  if (!currentDose) return null;
+
   const startDate = firstDose ? new Date(firstDose.at) : parseDateValue(weights[0].date);
   const baselineWeight = findBaselineWeight(weights, startDate);
   const currentWeight = weights.at(-1);
-  const doseForModel = currentDose?.doseMg || model.dosePoints[0].doseMg;
+  const doseForModel = currentDose.doseMg;
   const targetLossPct = interpolateDoseLoss(model.dosePoints, doseForModel);
   const elapsedWeeks = Math.max(0, (Date.now() - startDate.getTime()) / (7 * DAY_MS));
   const currentProgress = Math.min(elapsedWeeks / model.endpointWeeks, 1);
@@ -1388,9 +1481,7 @@ function getProjectionContext() {
   const projectedTargetWeight = baselineWeight.weightLb * (1 - targetLossPct / 100);
   const expectedNowWeight = baselineWeight.weightLb * (1 - expectedNowLossPct / 100);
   const activeAmount = calculatePeptideActiveAmount(peptide.id, new Date());
-  const steadyStateFactor = peptide.halfLifeHours
-    ? 1 / (1 - Math.pow(0.5, WEEK_HOURS / peptide.halfLifeHours))
-    : null;
+  const steadyStateFactor = weeklyAccumulationFactor(peptide);
 
   return {
     activeAmount,
@@ -1408,6 +1499,22 @@ function getProjectionContext() {
     targetLossPct,
     weights,
   };
+}
+
+function projectionReadinessMessage() {
+  const peptides = projectionCapablePeptides();
+  if (!peptides.length) return "Add retatrutide or tirzepatide in Peptides first.";
+
+  const peptide = getPeptide($("#projectionPeptide").value) || peptides[0];
+  const model = PROJECTION_MODELS[$("#projectionModel").value];
+  if (!model || model.compoundKey !== getProjectionCompoundKey(peptide)) return "Select a matching projection model.";
+
+  if (!profileRecords(state.weights).length) return "Add at least one weight entry for the active profile.";
+
+  const takenDose = profileRecords(state.doses).some((dose) => dose.peptideId === peptide.id && dose.status === "taken");
+  if (!takenDose) return "Log a taken reta/tirz dose, or mark a planned dose as taken.";
+
+  return "Add retatrutide or tirzepatide, then log weight and taken doses.";
 }
 
 function findBaselineWeight(weights, startDate) {
@@ -1441,17 +1548,26 @@ function weightTrendLabel(weights) {
 
 function drawCharts() {
   if (isActiveProfileLocked()) {
-    drawEmptyCanvas($("#accumulationChart"), "Unlock profile to show chart.");
-    drawEmptyCanvas($("#weightChart"), "Unlock profile to show chart.");
-    drawEmptyCanvas($("#weightDetailChart"), "Unlock profile to show chart.");
-    drawEmptyCanvas($("#projectionChart"), "Unlock profile to show chart.");
+    drawVisibleCanvas("#accumulationChart", (canvas) => drawEmptyCanvas(canvas, "Unlock profile to show chart."));
+    drawVisibleCanvas("#accumulationDetailChart", (canvas) => drawEmptyCanvas(canvas, "Unlock profile to show chart."));
+    drawVisibleCanvas("#weightChart", (canvas) => drawEmptyCanvas(canvas, "Unlock profile to show chart."));
+    drawVisibleCanvas("#weightDetailChart", (canvas) => drawEmptyCanvas(canvas, "Unlock profile to show chart."));
+    drawVisibleCanvas("#projectionChart", (canvas) => drawEmptyCanvas(canvas, "Unlock profile to show chart."));
     return;
   }
 
-  drawActiveChart($("#accumulationChart"));
-  drawWeightChart($("#weightChart"), profileRecords(state.weights));
-  drawWeightChart($("#weightDetailChart"), profileRecords(state.weights));
-  drawProjectionChart($("#projectionChart"));
+  drawVisibleCanvas("#accumulationChart", (canvas) => drawActiveChart(canvas, "#activeChartRange"));
+  drawVisibleCanvas("#accumulationDetailChart", (canvas) => drawActiveChart(canvas, "#accumulationDetailRange"));
+  drawVisibleCanvas("#weightChart", (canvas) => drawWeightChart(canvas, profileRecords(state.weights)));
+  drawVisibleCanvas("#weightDetailChart", (canvas) => drawWeightChart(canvas, profileRecords(state.weights)));
+  drawVisibleCanvas("#projectionChart", drawProjectionChart);
+}
+
+function drawVisibleCanvas(selector, draw) {
+  const canvas = $(selector);
+  const view = canvas?.closest(".view");
+  if (!view?.classList.contains("is-visible") || view.hidden) return;
+  draw(canvas);
 }
 
 function drawEmptyCanvas(canvas, message) {
@@ -1461,7 +1577,7 @@ function drawEmptyCanvas(canvas, message) {
   drawEmptyChart(context.ctx, context.width, context.height, message);
 }
 
-function drawActiveChart(canvas) {
+function drawActiveChart(canvas, rangeSelector = "#activeChartRange") {
   if (!canvas) return;
   const context = prepareCanvas(canvas);
   if (!context) return;
@@ -1470,12 +1586,12 @@ function drawActiveChart(canvas) {
   const series = activeSeries();
 
   if (!series.length) {
-    $("#activeChartRange").textContent = "";
+    $(rangeSelector).textContent = "";
     drawEmptyChart(ctx, width, height, "Log taken doses with half-life values.");
     return;
   }
 
-  $("#activeChartRange").textContent = `${formatDate(series[0].at)} to ${formatDate(series.at(-1).at)}`;
+  $(rangeSelector).textContent = `${formatDate(series[0].at)} to ${formatDate(series.at(-1).at)}`;
 
   drawFrame(ctx, width, height);
   const max = Math.max(...series.map((point) => point.value), 0.001);
@@ -1561,7 +1677,7 @@ function drawProjectionChart(canvas) {
   const projection = getProjectionContext();
 
   if (!projection) {
-    drawEmptyChart(ctx, width, height, "Add weight and a reta/tirz dose.");
+    drawEmptyChart(ctx, width, height, projectionReadinessMessage());
     return;
   }
 
@@ -1694,24 +1810,91 @@ function drawEmptyChart(ctx, width, height, message) {
 }
 
 async function enableNotifications() {
-  if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
+  const readiness = notificationReadiness();
+  if (!readiness.canRequest) {
+    alert(readiness.message);
+    if (readiness.showInstallPrompt) showInstallPrompt();
     return;
   }
 
-  const permission = await Notification.requestPermission();
+  const registration = await ensureServiceWorkerRegistration();
+  if ("serviceWorker" in navigator && !registration) {
+    alert("MTHD could not finish notification setup. Try again after the app finishes loading.");
+    return;
+  }
+
+  let permission = Notification.permission;
+  if (permission === "default") {
+    try {
+      permission = await Notification.requestPermission();
+    } catch {
+      permission = "denied";
+    }
+  }
+
   state.settings.notificationsEnabled = permission === "granted";
   saveState();
   updateNotificationButton();
 
   if (permission !== "granted") {
-    alert("Notifications were not enabled.");
+    alert(notificationDeniedMessage());
+    return;
   }
+
+  showReminderNotification("MTHD reminders are enabled. Planned jabs can notify while the app is open.");
+}
+
+function notificationReadiness() {
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    return {
+      canRequest: false,
+      message: "Notifications need HTTPS. Use the Vercel URL or install the PWA from the live site.",
+    };
+  }
+
+  if (!("Notification" in window)) {
+    return {
+      canRequest: false,
+      message: isIosDevice()
+        ? "On iPhone, add MTHD to the Home Screen first, then open it from that icon to enable notifications."
+        : "This browser does not support notifications.",
+      showInstallPrompt: isIosDevice(),
+    };
+  }
+
+  if (isIosDevice() && !isStandaloneApp()) {
+    return {
+      canRequest: false,
+      message: "On iPhone, notifications can only be enabled after MTHD is added to the Home Screen and opened from that icon.",
+      showInstallPrompt: true,
+    };
+  }
+
+  if (Notification.permission === "denied") {
+    return {
+      canRequest: false,
+      message: notificationDeniedMessage(),
+    };
+  }
+
+  return { canRequest: true, message: "" };
+}
+
+function notificationDeniedMessage() {
+  return "Notifications are blocked for MTHD. Enable them in your browser or iPhone notification settings, then try again.";
 }
 
 function updateNotificationButton() {
+  const readiness = notificationReadiness();
   const enabled = state.settings.notificationsEnabled && "Notification" in window && Notification.permission === "granted";
-  $("#notifyButton").textContent = enabled ? "Reminders on" : "Enable reminders";
+  const label = enabled
+    ? "Reminders on"
+    : readiness.showInstallPrompt
+      ? "Install for reminders"
+      : "Notification" in window && Notification.permission === "denied"
+        ? "Notifications blocked"
+        : "Enable reminders";
+  $("#notifyButton").textContent = label;
   $("#notifyButton").classList.toggle("secondary", enabled);
   scheduleReminderTimers();
 }
@@ -1734,13 +1917,23 @@ function scheduleReminderTimers() {
       const timer = setTimeout(() => {
         const peptide = getPeptide(dose.peptideId);
         const profile = activeProfile();
-        new Notification("MTHD reminder", {
-          body: `${profile.name}: ${peptide?.name || "Dose"} scheduled now.`,
-        });
+        showReminderNotification(`${profile.name}: ${peptide?.name || "Dose"} scheduled now.`);
       }, delay);
 
       reminderTimers.push(timer);
     });
+}
+
+async function showReminderNotification(body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const registration = await ensureServiceWorkerRegistration();
+  if (registration?.showNotification) {
+    registration.showNotification("MTHD reminder", { body }).catch(() => null);
+    return;
+  }
+
+  new Notification("MTHD reminder", { body });
 }
 
 function exportData() {
